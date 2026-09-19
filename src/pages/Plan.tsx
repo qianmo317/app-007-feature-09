@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { getPlan, savePlan, setRecentPlanId } from '../db';
 import { createHistoryManager } from '../history';
 import { getConflictMap, getTableStats } from '../utils';
-import type { Plan as PlanType, Command } from '../types';
+import type { Plan as PlanType, Command, Guest } from '../types';
 import GuestPool from '../components/GuestPool';
 import Canvas from '../components/Canvas';
 import RulesPanel from '../components/RulesPanel';
@@ -18,6 +18,7 @@ export default function PlanPage() {
   const [dragGuestId, setDragGuestId] = useState<string | null>(null);
   const historyRef = useRef<ReturnType<typeof createHistoryManager> | null>(null);
   const [conflictMap, setConflictMap] = useState<Map<string, string[]>>(new Map());
+  const [touchedIds, setTouchedIds] = useState<Set<string>>(new Set());
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -55,14 +56,26 @@ export default function PlanPage() {
   const handleUndo = useCallback(() => {
     if (!historyRef.current) return;
     const p = historyRef.current.undo();
-    if (p) setPlan(p);
+    if (p) {
+      setPlan(p);
+      setTouchedIds(new Set());
+    }
   }, []);
 
   const handleRedo = useCallback(() => {
     if (!historyRef.current) return;
     const p = historyRef.current.redo();
-    if (p) setPlan(p);
+    if (p) {
+      setPlan(p);
+      setTouchedIds(new Set());
+    }
   }, []);
+
+  /** 批量导入 / 成批修改：单条命令入栈，撤销一次即可整体退回 */
+  const handleReplaceGuests = useCallback((guests: Guest[], touched: string[]) => {
+    dispatch({ type: 'updateGuests', guests });
+    setTouchedIds(new Set(touched));
+  }, [dispatch]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -116,6 +129,9 @@ export default function PlanPage() {
             const guests = plan.guests.map((gg) => gg.id === g.id ? g : gg);
             dispatch({ type: 'updateGuests', guests });
           }}
+          onReplaceGuests={handleReplaceGuests}
+          touchedIds={touchedIds}
+          onClearTouched={() => setTouchedIds(new Set())}
         />
         <Canvas
           plan={plan}
