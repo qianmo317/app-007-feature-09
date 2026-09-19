@@ -116,6 +116,33 @@ export default function PlanPage() {
             const guests = plan.guests.map((gg) => gg.id === g.id ? g : gg);
             dispatch({ type: 'updateGuests', guests });
           }}
+          onBatchUpdate={(ids, patch) => {
+            const idSet = new Set(ids);
+            const guests = plan.guests.map((g) => {
+              if (!idSet.has(g.id)) return g;
+              let tags = g.tags;
+              if (patch.addTags?.length || patch.removeTags?.length) {
+                tags = g.tags.filter((t) => !patch.removeTags?.includes(t));
+                for (const t of patch.addTags || []) {
+                  if (!tags.includes(t)) tags = [...tags, t];
+                }
+              }
+              return {
+                ...g,
+                tags,
+                partySize: patch.partySize ?? g.partySize,
+                batchUpdated: true,
+              };
+            });
+            dispatch({ type: 'updateGuests', guests });
+          }}
+          onClearBatchMarks={(ids) => {
+            const idSet = new Set(ids);
+            const guests = plan.guests.map((g) =>
+              idSet.has(g.id) ? { ...g, batchUpdated: false } : g,
+            );
+            dispatch({ type: 'updateGuests', guests });
+          }}
         />
         <Canvas
           plan={plan}

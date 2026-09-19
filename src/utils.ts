@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { Plan } from './types';
+import { TAG_OPTIONS } from './types';
 
 export function generateId(): string {
   return uuidv4();
@@ -85,16 +86,58 @@ export function getTableStats(plan: Plan) {
   return { seated, capacity, emptySeats, totalGuests: plan.guests.length, unassignedCount: unassigned.length };
 }
 
-export function parseGuestsText(text: string): { name: string; tags: string[] }[] {
+export type ParsedGuest = {
+  name: string;
+  tags: string[];
+  partySize: number;
+};
+
+/**
+ * 解析批量导入文本：每行（或逗号/分号分隔）一个宾客。
+ * - 非预设标签的词一律忽略，第一个剩余的词当作姓名；没有剩余词则姓名为空（交给导入预览确认）
+ * - 识别随行人数：`3人`、`一家3口`、`3位` 视作总人数；`带2位家属/家属2人` 视作总人数 = 数字 + 1
+ * - 行内单独的数字（如 `张三 4`）按总人数处理
+ */
+export function parseGuestsText(text: string): ParsedGuest[] {
   const lines = text.split(/\n|，|,|;/).map((s) => s.trim()).filter(Boolean);
-  const result: { name: string; tags: string[] }[] = [];
+  const result: ParsedGuest[] = [];
   for (const line of lines) {
-    const parts = line.split(/\s+/);
-    const name = parts[0];
-    const tags = parts.slice(1);
-    if (name) result.push({ name, tags });
+    const tokens = line.split(/\s+/).filter(Boolean);
+    const tags: string[] = [];
+    const rest: string[] = [];
+    let partySize = 1;
+    let hasSize = false;
+
+    for (const raw of tokens) {
+      const withFamily = raw.match(/^(?:带)?(\d+)\s*(?:位|名)?\s*家属/);
+      const familySuffix = raw.match(/家属\s*(\d+)\s*(?:位|名)?人?$/);
+      const total = raw.match(/^(\d+)\s*(?:人|口|位|名)?$/) || raw.match(/(?:一家|全家)\s*(\d+)\s*(?:人|口)/);
+      if (withFamily || familySuffix) {
+        const n = Number((withFamily || familySuffix)![1]);
+        partySize = clampPartySize(n + 1);
+        hasSize = true;
+      } else if (total) {
+        partySize = clampPartySize(Number(total[1]));
+        hasSize = true;
+      } else if (TAG_OPTIONS.includes(raw)) {
+        if (!tags.includes(raw)) tags.push(raw);
+      } else {
+        rest.push(raw);
+      }
+    }
+
+    result.push({
+      name: rest.length > 0 ? rest[0] : '',
+      tags,
+      partySize: hasSize ? partySize : 1,
+    });
   }
   return result;
+}
+
+function clampPartySize(n: number): number {
+  if (!Number.isFinite(n)) return 1;
+  return Math.max(1, Math.min(10, Math.floor(n)));
 }
 
 export function exportPlanToJSON(plan: Plan): string {

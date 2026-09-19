@@ -5,6 +5,8 @@ export type Guest = {
   partySize: number;
   childSeat?: boolean;
   note?: string;
+  /** 经批量操作修改过的宾客标记，用于与未改动宾客区分；撤销批量操作时随快照一起回退 */
+  batchUpdated?: boolean;
 };
 
 export type TableShape = 'round' | 'rect';
